@@ -26,13 +26,24 @@ impl Default for SandboxConfig {
     }
 }
 
+use crate::wasm::WasmSandbox;
+
 pub struct Sandbox {
     config: SandboxConfig,
+    wasm_sandbox: WasmSandbox,
 }
 
 impl Sandbox {
     pub fn new(config: SandboxConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            wasm_sandbox: WasmSandbox::new(),
+        }
+    }
+
+    /// Provides access to the underlying strict WASM execution environment.
+    pub fn wasm(&self) -> &WasmSandbox {
+        &self.wasm_sandbox
     }
 
     /// Attempts to execute a command within the sandbox.

@@ -18,8 +18,16 @@ mod tests {
         // Setup system prompt
         agent.add_system_prompt("You are a helpful assistant.");
 
+        let (tx, _handle) = agent.spawn();
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+
         // Have a chat
-        let response = agent.chat("Hello!").await.unwrap();
+        let _ = tx.send(crate::agent::AgentEvent::UserMessage {
+            content: "Hello!".to_string(),
+            reply_tx: Some(reply_tx),
+        }).await;
+
+        let response = reply_rx.await.unwrap();
 
         // Assert response matches our Dummy Engine behavior
         assert_eq!(response, "(Dummy Engine Reply to: 'Hello!')");

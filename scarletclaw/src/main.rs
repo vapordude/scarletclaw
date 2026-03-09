@@ -70,6 +70,8 @@ async fn main() -> Result<()> {
                 agent.add_system_prompt(sys);
             }
 
+            let (tx, _handle) = agent.spawn();
+
             println!("Type your message below (type 'exit' to quit):");
             loop {
                 use std::io::{self, Write};
@@ -81,6 +83,7 @@ async fn main() -> Result<()> {
                 let input = input.trim();
 
                 if input.eq_ignore_ascii_case("exit") {
+                    let _ = tx.send(scarletclaw::agent::AgentEvent::Shutdown).await;
                     println!("Goodbye!");
                     break;
                 }
@@ -89,8 +92,22 @@ async fn main() -> Result<()> {
                     continue;
                 }
 
-                let reply = agent.chat(input).await?;
-                println!("🤖 {}", reply);
+                let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+                let event = scarletclaw::agent::AgentEvent::UserMessage {
+                    content: input.to_string(),
+                    reply_tx: Some(reply_tx),
+                };
+
+                if tx.send(event).await.is_err() {
+                    println!("Agent inbox closed unexpectedly.");
+                    break;
+                }
+
+                if let Ok(reply) = reply_rx.await {
+                    println!("🤖 {}", reply);
+                } else {
+                    println!("Failed to get reply from agent.");
+                }
             }
         }
         Commands::Gateway { port, system } => {
@@ -103,7 +120,8 @@ async fn main() -> Result<()> {
                 agent.add_system_prompt(sys);
             }
 
-            let gateway = Gateway::new(*port, agent);
+            let (tx, _handle) = agent.spawn();
+            let gateway = Gateway::new(*port, tx);
             gateway.run().await?;
         }
         Commands::TestSandbox { command } => {

@@ -6,14 +6,14 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::mpsc::Sender;
 
-use crate::agent::Agent;
+use crate::agent::AgentEvent;
 
 /// A simple gateway state managing a shared agent context.
 /// In a real scenario, you'd likely map connection IDs to different Agent sessions.
 struct GatewayState {
-    agent: Arc<Mutex<Agent>>,
+    inbox: Sender<AgentEvent>,
 }
 
 #[derive(Deserialize)]
@@ -28,20 +28,20 @@ pub struct ChatResponse {
 
 pub struct Gateway {
     port: u16,
-    agent: Arc<Mutex<Agent>>,
+    inbox: Sender<AgentEvent>,
 }
 
 impl Gateway {
-    pub fn new(port: u16, agent: Agent) -> Self {
+    pub fn new(port: u16, inbox: Sender<AgentEvent>) -> Self {
         Self {
             port,
-            agent: Arc::new(Mutex::new(agent)),
+            inbox,
         }
     }
 
     pub async fn run(&self) -> Result<()> {
         let state = Arc::new(GatewayState {
-            agent: self.agent.clone(),
+            inbox: self.inbox.clone(),
         });
 
         let app = Router::new()
@@ -66,11 +66,24 @@ async fn chat_endpoint(
     State(state): State<Arc<GatewayState>>,
     Json(payload): Json<ChatRequest>,
 ) -> Json<ChatResponse> {
-    let mut agent = state.agent.lock().await;
+    let (tx, rx) = tokio::sync::oneshot::channel();
 
-    let reply = match agent.chat(&payload.message).await {
-        Ok(r) => r,
-        Err(e) => format!("Error communicating with agent: {}", e),
+    // Send event asynchronously to the agent's background loop
+    let event = AgentEvent::UserMessage {
+        content: payload.message,
+        reply_tx: Some(tx),
+    };
+
+    if let Err(e) = state.inbox.send(event).await {
+        return Json(ChatResponse {
+            reply: format!("Failed to queue message to agent: {}", e),
+        });
+    }
+
+    // Await the response from the agent loop
+    let reply = match rx.await {
+        Ok(res) => res,
+        Err(_) => "Agent failed to respond or dropped the request.".to_string(),
     };
 
     Json(ChatResponse { reply })
