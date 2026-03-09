@@ -16,7 +16,7 @@ mod tests {
         let mut agent = Agent::new(engine, sandbox);
 
         // Setup system prompt
-        agent.set_system_prompt("You are a helpful assistant.");
+        agent.add_system_prompt("You are a helpful assistant.");
 
         // Have a chat
         let response = agent.chat("Hello!").await.unwrap();

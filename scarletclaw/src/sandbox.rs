@@ -41,6 +41,10 @@ impl Sandbox {
             bail!("Security violation: shell execution is disabled in this sandbox.");
         }
 
+        // Timeout parameter exists but real process spawning isn't implemented here yet.
+        // We will respect `maximum_execution_time_ms` once we wrap standard Command execution.
+        let _timeout = std::time::Duration::from_millis(self.config.maximum_execution_time_ms);
+
         // In a real implementation, this would route to a containerized or highly restricted
         // environment like Firecracker, bubblewrap, or a WASM runtime.
         Ok(format!("Executed: {}", cmd))
@@ -50,15 +54,13 @@ impl Sandbox {
         if !self.config.allow_file_system_read {
             bail!("Security violation: file system read is disabled in this sandbox.");
         }
-        // Dummy implementation
-        Ok(format!("Contents of {}", path))
+        bail!("Sandbox file reads are not implemented yet: {}", path);
     }
 
     pub fn write_file(&self, _path: &str, _content: &str) -> Result<()> {
         if !self.config.allow_file_system_write {
             bail!("Security violation: file system write is disabled in this sandbox.");
         }
-        // Dummy implementation
-        Ok(())
+        bail!("Sandbox file writes are not implemented yet.");
     }
 }

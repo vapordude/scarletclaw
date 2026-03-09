@@ -6,6 +6,7 @@ use scarletclaw::{
     agent::Agent,
     engine::DummyEngine,
     sandbox::{Sandbox, SandboxConfig},
+    gateway::Gateway,
 };
 
 /// ScarletClaw - The native Rust local AI assistant
@@ -27,6 +28,17 @@ enum Commands {
         /// Whether to enable unsafe shell command execution (use with extreme caution!)
         #[arg(long, default_value_t = false)]
         unsafe_shell: bool,
+    },
+
+    /// Start the Gateway server to accept remote connections
+    Gateway {
+        /// Port to run the server on
+        #[arg(short, long, default_value_t = 18789)]
+        port: u16,
+
+        /// Optional system prompt to initialize the agent
+        #[arg(short, long)]
+        system: Option<String>,
     },
 
     /// Test the sandbox security constraints
@@ -55,7 +67,7 @@ async fn main() -> Result<()> {
             let mut agent = Agent::new(engine, sandbox);
 
             if let Some(sys) = system {
-                agent.set_system_prompt(sys);
+                agent.add_system_prompt(sys);
             }
 
             println!("Type your message below (type 'exit' to quit):");
@@ -81,12 +93,25 @@ async fn main() -> Result<()> {
                 println!("🤖 {}", reply);
             }
         }
+        Commands::Gateway { port, system } => {
+            let config = SandboxConfig::default();
+            let sandbox = Sandbox::new(config);
+            let engine = Arc::new(DummyEngine);
+            let mut agent = Agent::new(engine, sandbox);
+
+            if let Some(sys) = system {
+                agent.add_system_prompt(sys);
+            }
+
+            let gateway = Gateway::new(*port, agent);
+            gateway.run().await?;
+        }
         Commands::TestSandbox { command } => {
             let config = SandboxConfig::default();
             let sandbox = Sandbox::new(config);
 
             println!("Attempting to execute '{}' in a default sandbox...", command);
-            match sandbox.execute_command(command) {
+            match sandbox.execute_command(&command) {
                 Ok(res) => println!("Success: {}", res),
                 Err(e) => println!("Sandbox blocked the action successfully: {}", e),
             }
