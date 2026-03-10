@@ -9,7 +9,7 @@ import { normalizeProviderId } from "../agents/model-selection.js";
 import { resolveStateDir, type OpenClawConfig } from "../config/config.js";
 import { coerceSecretRef } from "../config/types.secrets.js";
 import { resolveSecretInputRef, type SecretRef } from "../config/types.secrets.js";
-import { resolveConfigDir, resolveUserPath } from "../utils.js";
+import { pathExists, resolveConfigDir, resolveUserPath } from "../utils.js";
 import { runTasksWithConcurrency } from "../utils/run-with-concurrency.js";
 import { iterateAuthProfileCredentials } from "./auth-profiles-scan.js";
 import { createSecretsConfigIO } from "./config-io.js";
@@ -28,11 +28,11 @@ import {
 import { isNonEmptyString, isRecord } from "./shared.js";
 import { describeUnknownError } from "./shared.js";
 import {
-  listAgentModelsJsonPaths,
-  listAuthProfileStorePaths,
-  listLegacyAuthJsonPaths,
+  listAgentModelsJsonPathsAsync,
+  listAuthProfileStorePathsAsync,
+  listLegacyAuthJsonPathsAsync,
   parseEnvAssignmentValue,
-  readJsonObjectIfExists,
+  readJsonObjectIfExistsAsync,
 } from "./storage-scan.js";
 import { discoverConfigSecretTargets } from "./target-registry.js";
 
@@ -168,13 +168,16 @@ function trackAuthProviderState(
   });
 }
 
-function collectEnvPlaintext(params: { envPath: string; collector: AuditCollector }): void {
-  if (!fs.existsSync(params.envPath)) {
+async function collectEnvPlaintext(params: {
+  envPath: string;
+  collector: AuditCollector;
+}): Promise<void> {
+  if (!(await pathExists(params.envPath))) {
     return;
   }
   params.collector.filesScanned.add(params.envPath);
   const knownKeys = new Set(listKnownSecretEnvVarNames());
-  const raw = fs.readFileSync(params.envPath, "utf8");
+  const raw = await fs.promises.readFile(params.envPath, "utf8");
   const lines = raw.split(/\r?\n/);
   for (const line of lines) {
     const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
@@ -252,16 +255,16 @@ function collectConfigSecrets(params: {
   }
 }
 
-function collectAuthStoreSecrets(params: {
+async function collectAuthStoreSecrets(params: {
   authStorePath: string;
   collector: AuditCollector;
   defaults?: SecretDefaults;
-}): void {
-  if (!fs.existsSync(params.authStorePath)) {
+}): Promise<void> {
+  if (!(await pathExists(params.authStorePath))) {
     return;
   }
   params.collector.filesScanned.add(params.authStorePath);
-  const parsedResult = readJsonObjectIfExists(params.authStorePath);
+  const parsedResult = await readJsonObjectIfExistsAsync(params.authStorePath);
   if (parsedResult.error) {
     addFinding(params.collector, {
       code: "REF_UNRESOLVED",
@@ -325,51 +328,57 @@ function collectAuthStoreSecrets(params: {
   }
 }
 
-function collectAuthJsonResidue(params: { stateDir: string; collector: AuditCollector }): void {
-  for (const authJsonPath of listLegacyAuthJsonPaths(params.stateDir)) {
-    params.collector.filesScanned.add(authJsonPath);
-    const parsedResult = readJsonObjectIfExists(authJsonPath);
-    if (parsedResult.error) {
-      addFinding(params.collector, {
-        code: "REF_UNRESOLVED",
-        severity: "error",
-        file: authJsonPath,
-        jsonPath: "<root>",
-        message: `Invalid JSON in legacy auth.json: ${parsedResult.error}`,
-      });
-      continue;
-    }
-    const parsed = parsedResult.value;
-    if (!parsed) {
-      continue;
-    }
-    for (const [providerId, value] of Object.entries(parsed)) {
-      if (!isRecord(value)) {
-        continue;
-      }
-      if (value.type === "api_key" && isNonEmptyString(value.key)) {
+async function collectAuthJsonResidue(params: {
+  stateDir: string;
+  collector: AuditCollector;
+}): Promise<void> {
+  const paths = await listLegacyAuthJsonPathsAsync(params.stateDir);
+  await Promise.all(
+    paths.map(async (authJsonPath) => {
+      params.collector.filesScanned.add(authJsonPath);
+      const parsedResult = await readJsonObjectIfExistsAsync(authJsonPath);
+      if (parsedResult.error) {
         addFinding(params.collector, {
-          code: "LEGACY_RESIDUE",
-          severity: "warn",
+          code: "REF_UNRESOLVED",
+          severity: "error",
           file: authJsonPath,
-          jsonPath: providerId,
-          message: "Legacy auth.json contains static api_key credentials.",
-          provider: providerId,
+          jsonPath: "<root>",
+          message: `Invalid JSON in legacy auth.json: ${parsedResult.error}`,
         });
+        return;
       }
-    }
-  }
+      const parsed = parsedResult.value;
+      if (!parsed) {
+        return;
+      }
+      for (const [providerId, value] of Object.entries(parsed)) {
+        if (!isRecord(value)) {
+          continue;
+        }
+        if (value.type === "api_key" && isNonEmptyString(value.key)) {
+          addFinding(params.collector, {
+            code: "LEGACY_RESIDUE",
+            severity: "warn",
+            file: authJsonPath,
+            jsonPath: providerId,
+            message: "Legacy auth.json contains static api_key credentials.",
+            provider: providerId,
+          });
+        }
+      }
+    }),
+  );
 }
 
-function collectModelsJsonSecrets(params: {
+async function collectModelsJsonSecrets(params: {
   modelsJsonPath: string;
   collector: AuditCollector;
-}): void {
-  if (!fs.existsSync(params.modelsJsonPath)) {
+}): Promise<void> {
+  if (!(await pathExists(params.modelsJsonPath))) {
     return;
   }
   params.collector.filesScanned.add(params.modelsJsonPath);
-  const parsedResult = readJsonObjectIfExists(params.modelsJsonPath);
+  const parsedResult = await readJsonObjectIfExistsAsync(params.modelsJsonPath);
   if (parsedResult.error) {
     addFinding(params.collector, {
       code: "REF_UNRESOLVED",
@@ -623,19 +632,28 @@ export async function runSecretsAudit(
       configPath,
       collector,
     });
-    for (const authStorePath of listAuthProfileStorePaths(config, stateDir)) {
-      collectAuthStoreSecrets({
-        authStorePath,
-        collector,
-        defaults,
-      });
-    }
-    for (const modelsJsonPath of listAgentModelsJsonPaths(config, stateDir)) {
-      collectModelsJsonSecrets({
-        modelsJsonPath,
-        collector,
-      });
-    }
+
+    const [authStorePaths, modelsJsonPaths] = await Promise.all([
+      listAuthProfileStorePathsAsync(config, stateDir),
+      listAgentModelsJsonPathsAsync(config, stateDir),
+    ]);
+
+    await Promise.all([
+      ...authStorePaths.map((authStorePath) =>
+        collectAuthStoreSecrets({
+          authStorePath,
+          collector,
+          defaults,
+        }),
+      ),
+      ...modelsJsonPaths.map((modelsJsonPath) =>
+        collectModelsJsonSecrets({
+          modelsJsonPath,
+          collector,
+        }),
+      ),
+    ]);
+
     await collectUnresolvedRefFindings({
       collector,
       config,
@@ -652,14 +670,16 @@ export async function runSecretsAudit(
     });
   }
 
-  collectEnvPlaintext({
-    envPath,
-    collector,
-  });
-  collectAuthJsonResidue({
-    stateDir,
-    collector,
-  });
+  await Promise.all([
+    collectEnvPlaintext({
+      envPath,
+      collector,
+    }),
+    collectAuthJsonResidue({
+      stateDir,
+      collector,
+    }),
+  ]);
 
   const summary = summarizeFindings(collector.findings);
   const status: SecretsAuditStatus =
