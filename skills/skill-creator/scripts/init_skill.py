@@ -111,18 +111,58 @@ EXAMPLE_SCRIPT = '''#!/usr/bin/env python3
 """
 Example helper script for {skill_name}
 
-This is a placeholder script that can be executed directly.
-Replace with actual implementation or delete if not needed.
+This script demonstrates a basic pattern for skill-specific utilities,
+including command-line argument parsing and basic file processing.
 
-Example real scripts from other skills:
-- pdf/scripts/fill_fillable_fields.py - Fills PDF form fields
-- pdf/scripts/convert_pdf_to_images.py - Converts PDF pages to images
+Usage:
+    ./example.py <input-file> [--verbose]
+
+Example:
+    ./example.py data.txt --verbose
 """
 
+import argparse
+import sys
+from pathlib import Path
+
+
+def process_data(input_path: Path, verbose: bool = False) -> int:
+    """
+    Example processing function.
+    Replace this with your actual logic (e.g., PDF manipulation, API calls, etc.)
+    """
+    if verbose:
+        print(f"Reading from {{input_path}}...")
+
+    try:
+        content = input_path.read_text()
+        line_count = len(content.splitlines())
+        print(f"Processed {{input_path}}: {{line_count}} lines found.")
+        return 0
+    except Exception as e:
+        print(f"Error processing {{input_path}}: {{e}}", file=sys.stderr)
+        return 1
+
+
 def main():
-    print("This is an example script for {skill_name}")
-    # TODO: Add actual script logic here
-    # This could be data processing, file conversion, API calls, etc.
+    parser = argparse.ArgumentParser(
+        description="Example helper script for {skill_name}",
+    )
+    parser.add_argument("input_file", help="Path to the input file to process")
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Enable verbose output"
+    )
+
+    args = parser.parse_args()
+    input_path = Path(args.input_file)
+
+    if not input_path.exists():
+        print(f"Error: File not found: {{input_path}}", file=sys.stderr)
+        sys.exit(1)
+
+    result = process_data(input_path, args.verbose)
+    sys.exit(result)
+
 
 if __name__ == "__main__":
     main()
