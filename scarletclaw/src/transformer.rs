@@ -1,5 +1,51 @@
 use crate::tensor::Tensor;
 
+/// Converts discrete token IDs into dense continuous vector representations.
+pub struct Embedding {
+    weight: Tensor, // (vocab_size, hidden_size)
+    hidden_size: usize,
+}
+
+impl Embedding {
+    pub fn new(vocab_size: usize, hidden_size: usize) -> Self {
+        Self {
+            // Dummy initialization for scaffolding
+            weight: Tensor::zeros(vec![vocab_size, hidden_size]),
+            hidden_size,
+        }
+    }
+
+    /// Forward pass: looks up the embedding vector for a given token ID.
+    pub fn forward(&self, token_id: usize) -> Tensor {
+        let mut out = Tensor::zeros(vec![1, self.hidden_size]);
+        // Simple row extraction
+        let offset = token_id * self.hidden_size;
+        for i in 0..self.hidden_size {
+            out.data[i] = self.weight.data[offset + i];
+        }
+        out
+    }
+}
+
+/// The final Language Model Head.
+/// Projects the final hidden state back into the vocabulary space to produce logits.
+pub struct LmHead {
+    weight: Tensor, // (hidden_size, vocab_size)
+}
+
+impl LmHead {
+    pub fn new(hidden_size: usize, vocab_size: usize) -> Self {
+        Self {
+            weight: Tensor::zeros(vec![hidden_size, vocab_size]),
+        }
+    }
+
+    /// Forward pass: `x` is (1, hidden_size), returns logits (1, vocab_size).
+    pub fn forward(&self, x: &Tensor) -> Tensor {
+        x.matmul(&self.weight)
+    }
+}
+
 /// A mathematical implementation of Root Mean Square Layer Normalization (RMSNorm).
 /// Popularized by LLaMA models, it stabilizes the activations by scaling them
 /// by the root mean square of the vector elements, rather than mean and variance.

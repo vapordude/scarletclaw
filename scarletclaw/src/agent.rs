@@ -1,16 +1,16 @@
 use anyhow::Result;
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 use crate::{
     engine::InferenceEngine,
+    memory::{DummyEpisodicMemory, EpisodicMemory, Memory},
     models::Message,
-    sandbox::Sandbox,
-    memory::{Memory, EpisodicMemory, DummyEpisodicMemory},
-    tools::Tool,
     react::AgentThought,
+    sandbox::Sandbox,
+    tools::Tool,
 };
 
 /// Events that can be sent to the Agent's inbox.
@@ -22,9 +22,7 @@ pub enum AgentEvent {
         reply_tx: Option<tokio::sync::oneshot::Sender<String>>,
     },
     /// A system-level event or cron trigger.
-    SystemTrigger {
-        description: String,
-    },
+    SystemTrigger { description: String },
     /// Command to cleanly shutdown the agent loop.
     Shutdown,
 }
@@ -91,7 +89,10 @@ impl Agent {
                     }
                     AgentEvent::SystemTrigger { description } => {
                         println!("🤖 Agent received system trigger: {}", description);
-                        let prompt = format!("System Event Triggered: {}. What should you do?", description);
+                        let prompt = format!(
+                            "System Event Triggered: {}. What should you do?",
+                            description
+                        );
                         let _ = self.process_turn(&prompt).await;
                     }
                     AgentEvent::Shutdown => {
@@ -127,11 +128,17 @@ impl Agent {
                     // Check if the agent wants to act
                     if let Some(action) = thought.action {
                         println!("Agent Thought: {}", thought.thought);
-                        println!("Agent executing Tool: {} with args '{}'", action.tool_name, action.args);
+                        println!(
+                            "Agent executing Tool: {} with args '{}'",
+                            action.tool_name, action.args
+                        );
 
-                        let tool_observation = if let Some(tool) = self.tools.get(&action.tool_name) {
+                        let tool_observation = if let Some(tool) = self.tools.get(&action.tool_name)
+                        {
                             match tool.execute(&self.sandbox, &action.args).await {
-                                Ok(res) => format!("Observation: Execution successful. Output: {}", res),
+                                Ok(res) => {
+                                    format!("Observation: Execution successful. Output: {}", res)
+                                }
                                 Err(e) => format!("Observation: Execution failed. Error: {}", e),
                             }
                         } else {

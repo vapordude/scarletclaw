@@ -22,10 +22,12 @@ mod tests {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
         // Have a chat
-        let _ = tx.send(crate::agent::AgentEvent::UserMessage {
-            content: "Hello!".to_string(),
-            reply_tx: Some(reply_tx),
-        }).await;
+        let _ = tx
+            .send(crate::agent::AgentEvent::UserMessage {
+                content: "Hello!".to_string(),
+                reply_tx: Some(reply_tx),
+            })
+            .await;
 
         let response = reply_rx.await.unwrap();
 

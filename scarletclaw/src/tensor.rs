@@ -17,10 +17,14 @@ pub struct TernaryTensor {
 impl TernaryTensor {
     /// Creates a new ternary tensor.
     pub fn new(data: Vec<i8>, shape: Vec<usize>) -> Self {
-        assert_eq!(data.len(), shape.iter().product::<usize>(), "Data length must match shape product");
+        assert_eq!(
+            data.len(),
+            shape.iter().product::<usize>(),
+            "Data length must match shape product"
+        );
         // Verify all elements are -1, 0, or 1
         for &val in &data {
-            assert!(val >= -1 && val <= 1, "Ternary weights must be -1, 0, or 1");
+            assert!((-1..=1).contains(&val), "Ternary weights must be -1, 0, or 1");
         }
         Self { data, shape }
     }
@@ -38,7 +42,11 @@ impl Tensor {
 
     /// Creates a new tensor from raw data and a shape.
     pub fn new(data: Vec<f32>, shape: Vec<usize>) -> Self {
-        assert_eq!(data.len(), shape.iter().product::<usize>(), "Data length must match shape product");
+        assert_eq!(
+            data.len(),
+            shape.iter().product::<usize>(),
+            "Data length must match shape product"
+        );
         Self { data, shape }
     }
 
@@ -52,7 +60,10 @@ impl Tensor {
 
     /// Element-wise multiplication. Mutates `self` in place.
     pub fn mul_assign(&mut self, other: &Tensor) {
-        assert_eq!(self.shape, other.shape, "Shapes must match for multiplication");
+        assert_eq!(
+            self.shape, other.shape,
+            "Shapes must match for multiplication"
+        );
         for i in 0..self.data.len() {
             self.data[i] *= other.data[i];
         }
@@ -78,7 +89,10 @@ impl Tensor {
 
         let m = self.shape[0];
         let k = self.shape[1];
-        assert_eq!(k, other.shape[0], "Inner dimensions must match (M, K) x (K, N)");
+        assert_eq!(
+            k, other.shape[0],
+            "Inner dimensions must match (M, K) x (K, N)"
+        );
         let n = other.shape[1];
 
         let mut result = Tensor::zeros(vec![m, n]);
@@ -107,7 +121,10 @@ impl Tensor {
 
         let m = self.shape[0];
         let k = self.shape[1];
-        assert_eq!(k, weights.shape[0], "Inner dimensions must match (M, K) x (K, N)");
+        assert_eq!(
+            k, weights.shape[0],
+            "Inner dimensions must match (M, K) x (K, N)"
+        );
         let n = weights.shape[1];
 
         let mut result = Tensor::zeros(vec![m, n]);
@@ -124,7 +141,7 @@ impl Tensor {
                     match w_val {
                         1 => sum += a_val,
                         -1 => sum -= a_val,
-                        0 => {}, // Skip 0
+                        0 => {} // Skip 0
                         _ => unreachable!("Ternary weights must be -1, 0, 1"),
                     }
                 }
@@ -137,7 +154,11 @@ impl Tensor {
 
     /// Applies the Softmax activation function over a 1D tensor.
     pub fn softmax(&mut self) {
-        assert_eq!(self.shape.len(), 1, "Softmax implemented for 1D tensors here");
+        assert_eq!(
+            self.shape.len(),
+            1,
+            "Softmax implemented for 1D tensors here"
+        );
 
         // Find max for numerical stability
         let mut max_val = f32::NEG_INFINITY;

@@ -1,13 +1,13 @@
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::sync::Arc;
-use anyhow::Result;
 
 use scarletclaw::{
     agent::Agent,
-    engine::DummyEngine,
     crimson::CrimsonEngineAdapter,
-    sandbox::{Sandbox, SandboxConfig},
+    engine::DummyEngine,
     gateway::Gateway,
+    sandbox::{Sandbox, SandboxConfig},
     scheduler::Scheduler,
     sqlite_memory::SqliteEpisodicMemory,
 };
@@ -64,7 +64,12 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::Chat { system, unsafe_shell, cron_interval, use_crimson_engine } => {
+        Commands::Chat {
+            system,
+            unsafe_shell,
+            cron_interval,
+            use_crimson_engine,
+        } => {
             println!("🦀 Welcome to ScarletClaw!");
             let mut config = SandboxConfig::default();
 
@@ -78,15 +83,16 @@ async fn main() -> Result<()> {
             let engine: Arc<dyn scarletclaw::engine::InferenceEngine> = if *use_crimson_engine {
                 println!("🧠 Initializing hybrid BitMamba-2 mathematical engine...");
                 // Dummy dimension values matching typical 0.25b models roughly
-                Arc::new(CrimsonEngineAdapter::new(512, 1024, 1024, 64))
+                // vocab_size: 32000, hidden: 512, intermediate: 1024, expand: 1024, state: 64
+                Arc::new(CrimsonEngineAdapter::new(32000, 512, 1024, 1024, 64))
             } else {
                 Arc::new(DummyEngine)
             };
 
-            let memory_db = SqliteEpisodicMemory::new("scarletclaw_memory.db").expect("Failed to init DB");
+            let memory_db =
+                SqliteEpisodicMemory::new("scarletclaw_memory.db").expect("Failed to init DB");
 
-            let mut agent = Agent::new(engine, sandbox)
-                .with_episodic_memory(Arc::new(memory_db));
+            let mut agent = Agent::new(engine, sandbox).with_episodic_memory(Arc::new(memory_db));
 
             if let Some(sys) = system {
                 agent.add_system_prompt(sys);
@@ -142,10 +148,10 @@ async fn main() -> Result<()> {
             let sandbox = Sandbox::new(config);
             let engine = Arc::new(DummyEngine);
 
-            let memory_db = SqliteEpisodicMemory::new("scarletclaw_memory.db").expect("Failed to init DB");
+            let memory_db =
+                SqliteEpisodicMemory::new("scarletclaw_memory.db").expect("Failed to init DB");
 
-            let mut agent = Agent::new(engine, sandbox)
-                .with_episodic_memory(Arc::new(memory_db));
+            let mut agent = Agent::new(engine, sandbox).with_episodic_memory(Arc::new(memory_db));
 
             if let Some(sys) = system {
                 agent.add_system_prompt(sys);
@@ -159,8 +165,11 @@ async fn main() -> Result<()> {
             let config = SandboxConfig::default();
             let sandbox = Sandbox::new(config);
 
-            println!("Attempting to execute '{}' in a default sandbox...", command);
-            match sandbox.execute_command(&command) {
+            println!(
+                "Attempting to execute '{}' in a default sandbox...",
+                command
+            );
+            match sandbox.execute_command(command) {
                 Ok(res) => println!("Success: {}", res),
                 Err(e) => println!("Sandbox blocked the action successfully: {}", e),
             }

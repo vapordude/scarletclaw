@@ -1,8 +1,8 @@
 use anyhow::Result;
 use axum::{
-    routing::{get, post},
-    Router, Json,
+    Json, Router,
     extract::State,
+    routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -33,10 +33,7 @@ pub struct Gateway {
 
 impl Gateway {
     pub fn new(port: u16, inbox: Sender<AgentEvent>) -> Self {
-        Self {
-            port,
-            inbox,
-        }
+        Self { port, inbox }
     }
 
     pub async fn run(&self) -> Result<()> {

@@ -3,32 +3,39 @@ use async_trait::async_trait;
 
 use crate::{
     engine::InferenceEngine,
+    mamba::SsmBlock,
     models::Message,
     tensor::Tensor,
-    transformer::{FeedForward, RMSNorm},
-    mamba::SsmBlock,
+    transformer::{Embedding, FeedForward, LmHead, RMSNorm},
 };
 use tokio::sync::Mutex;
 
 /// Represents a hybrid BitMamba2 architecture native inference engine.
 /// This utilizes zero external dependencies, running solely on our `tensor.rs` math primitives.
 pub struct CrimsonEngineAdapter {
-    hidden_size: usize,
-
     // Architecture Blocks
+    embedding: Embedding,
     norm: RMSNorm,
     ssm: Mutex<SsmBlock>,
     ffn: FeedForward,
+    lm_head: LmHead,
 }
 
 impl CrimsonEngineAdapter {
-    pub fn new(hidden_size: usize, intermediate_size: usize, expand_size: usize, state_size: usize) -> Self {
+    pub fn new(
+        vocab_size: usize,
+        hidden_size: usize,
+        intermediate_size: usize,
+        expand_size: usize,
+        state_size: usize,
+    ) -> Self {
         Self {
-            hidden_size,
+            embedding: Embedding::new(vocab_size, hidden_size),
             norm: RMSNorm::new(hidden_size),
             // We use Mutex here because SSM is stateful (carries `h_state` across tokens)
             ssm: Mutex::new(SsmBlock::new(hidden_size, expand_size, state_size)),
             ffn: FeedForward::new(hidden_size, intermediate_size),
+            lm_head: LmHead::new(hidden_size, vocab_size),
         }
     }
 }
@@ -43,32 +50,44 @@ impl InferenceEngine for CrimsonEngineAdapter {
         // Ensure state is clean before processing a new sequence
         ssm.reset_state();
 
-        // 2. Allocate an activation tensor (batch_size=1, hidden_size)
-        let mut activation = Tensor::zeros(vec![1, self.hidden_size]);
+        // 2. We keep track of the final logits to sample from
+        let mut _logits = Tensor::zeros(vec![1, 1]); // Dummy init
 
         // 3. Forward Pass Loop (Iterating over sequence)
-        for _token in tokens {
-            // a. Apply Pre-Norm
-            self.norm.forward(&mut activation);
+        for token_id in tokens {
+            // a. Embed Token -> (1, hidden_size)
+            let mut activation = self.embedding.forward(token_id);
 
-            // b. BitMamba SSM Step (Handles temporal dynamics + mixing)
-            let ssm_out = ssm.forward_step(&activation);
+            // b. Apply Pre-Norm (We must copy to preserve the residual identity)
+            let mut norm_activation = activation.clone();
+            self.norm.forward(&mut norm_activation);
 
-            // c. Residual Connection 1
+            // c. BitMamba SSM Step (Handles temporal dynamics + mixing)
+            let ssm_out = ssm.forward_step(&norm_activation);
+
+            // d. Residual Connection 1 (Add to original un-normalized activation)
             activation.add_assign(&ssm_out);
 
-            // d. Post-Norm
-            self.norm.forward(&mut activation);
+            // e. Post-Norm
+            let mut norm_activation_2 = activation.clone();
+            self.norm.forward(&mut norm_activation_2);
 
-            // e. FeedForward (SwiGLU)
-            let ffn_out = self.ffn.forward(&activation);
+            // f. FeedForward (SwiGLU)
+            let ffn_out = self.ffn.forward(&norm_activation_2);
 
-            // f. Residual Connection 2
+            // g. Residual Connection 2
             activation.add_assign(&ffn_out);
 
-            // In a full implementation, we'd map `activation` to vocab logits here.
+            // h. Final pre-head norm
+            self.norm.forward(&mut activation);
+
+            // i. Final Language Model Head projection -> (1, vocab_size)
+            _logits = self.lm_head.forward(&activation);
+
+            // In a full runtime, we would sample the next token from `logits` here
+            // using argmax or temperature sampling, and feed it back into the loop.
         }
 
-        Ok("Crimson-Core BitMamba2 Engine initialized. Awaiting real 1.58-bit Safetensor weights!".to_string())
+        Ok("Crimson-Core BitMamba2 Engine fully connected. Awaiting real 1.58-bit Safetensor weights!".to_string())
     }
 }

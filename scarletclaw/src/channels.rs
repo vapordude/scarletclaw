@@ -28,13 +28,19 @@ impl WebhookChannel {
 #[async_trait]
 impl Channel for WebhookChannel {
     async fn listen(&self) -> Result<()> {
-        println!("[{}] Channel is listening for incoming webhooks...", self.name);
+        println!(
+            "[{}] Channel is listening for incoming webhooks...",
+            self.name
+        );
         // In reality, this would bind a port or hook into the Gateway to receive HTTP requests.
         Ok(())
     }
 
     async fn send(&self, target_id: &str, message: &str) -> Result<()> {
-        println!("[{}] Sending message to {}: {}", self.name, target_id, message);
+        println!(
+            "[{}] Sending message to {}: {}",
+            self.name, target_id, message
+        );
         Ok(())
     }
 }

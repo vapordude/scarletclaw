@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use crate::models::Message;
+use async_trait::async_trait;
 
 /// Represents a persistent episodic memory system (e.g., Vector DB or SQLite).
 /// This allows the agent to recall facts over long time horizons.
@@ -12,6 +12,12 @@ pub trait EpisodicMemory: Send + Sync {
 /// A dummy in-memory implementation of long-term memory.
 pub struct DummyEpisodicMemory {
     memories: std::sync::Mutex<Vec<String>>,
+}
+
+impl Default for DummyEpisodicMemory {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DummyEpisodicMemory {
@@ -33,7 +39,8 @@ impl EpisodicMemory for DummyEpisodicMemory {
     async fn recall_memories(&self, query: &str, limit: usize) -> anyhow::Result<Vec<String>> {
         let mems = self.memories.lock().unwrap();
         // Extremely naive "search" for demonstration purposes.
-        let results = mems.iter()
+        let results = mems
+            .iter()
             .filter(|m| m.contains(query))
             .take(limit)
             .cloned()
@@ -46,6 +53,12 @@ impl EpisodicMemory for DummyEpisodicMemory {
 pub struct Memory {
     messages: Vec<Message>,
     max_tokens: Option<usize>, // A simple token limit simulation
+}
+
+impl Default for Memory {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Memory {

@@ -27,7 +27,10 @@ impl Scheduler {
             // Skip the immediate first tick so we don't spam on startup
             ticker.tick().await;
 
-            println!("⏰ Scheduler started. Agent will be pinged every {} seconds.", self.interval_seconds);
+            println!(
+                "⏰ Scheduler started. Agent will be pinged every {} seconds.",
+                self.interval_seconds
+            );
 
             loop {
                 ticker.tick().await;

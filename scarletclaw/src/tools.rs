@@ -1,7 +1,7 @@
 use anyhow::{Result, bail};
 use async_trait::async_trait;
-use std::process::Command;
 use std::fs;
+use std::process::Command;
 
 use crate::sandbox::Sandbox;
 
@@ -54,12 +54,24 @@ impl Tool for WriteAndCompileWasmTool {
     }
 
     async fn execute(&self, sandbox: &Sandbox, args: &str) -> Result<String> {
-        let source_code = args;
+        let agent_code = args;
 
         // Ensure the host has rustc installed for this dynamic capability
         if Command::new("rustc").arg("--version").output().is_err() {
             bail!("rustc is not available on the host to compile dynamic tools.");
         }
+
+        // We wrap the agent's code in standard WASM cdylib boilerplate
+        // so the agent only has to write the internal logic of `pub fn run() -> ...`
+        let full_source = format!(
+            "
+            #[no_mangle]
+            pub extern \"C\" fn run() {{
+                {}
+            }}
+            ",
+            agent_code
+        );
 
         // 1. Write the agent's code to a temporary file
         let temp_dir = std::env::temp_dir().join("scarletclaw_wasm");
@@ -67,7 +79,7 @@ impl Tool for WriteAndCompileWasmTool {
         let src_path = temp_dir.join("dynamic_tool.rs");
         let out_path = temp_dir.join("dynamic_tool.wasm");
 
-        fs::write(&src_path, source_code)?;
+        fs::write(&src_path, full_source)?;
 
         // 2. Compile the source to WASM targeting wasm32-unknown-unknown
         // We use standard Command here, NOT the agent's sandbox, because compilation

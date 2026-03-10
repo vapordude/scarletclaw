@@ -11,23 +11,41 @@ pub struct SsmBlock {
     pub proj_out: TernaryTensor, // (expand_size, hidden_size)
 
     // SSM specific parameters
-    pub dt_proj: Tensor,         // Step size parameter projection
-    pub a_log: Tensor,           // Parameterized A matrix (often stored in log space)
-    pub d: Tensor,               // Skip connection parameter
+    pub x_proj: Tensor, // Linear projection from expand_size -> (dt_rank + state_size * 2)
+    pub dt_proj: Tensor, // Linear projection from dt_rank -> expand_size
+    pub a_log: Tensor,  // Parameterized A matrix (often stored in log space)
+    pub d: Tensor,      // Skip connection parameter
+
+    // Config dims
+    pub dt_rank: usize,
 
     // Internal state carried forward sequentially
-    pub h_state: Tensor,         // (batch, expand_size, state_size)
+    pub h_state: Tensor, // (batch, expand_size, state_size)
 }
 
 impl SsmBlock {
     pub fn new(hidden_size: usize, expand_size: usize, state_size: usize) -> Self {
+        // Mamba typically defines dt_rank as ceil(hidden_size / 16)
+        let dt_rank = (hidden_size as f32 / 16.0).ceil() as usize;
+
         Self {
             // Dummy initialization for scaffolding
-            proj_in: TernaryTensor::new(vec![0; hidden_size * expand_size], vec![hidden_size, expand_size]),
-            proj_out: TernaryTensor::new(vec![0; expand_size * hidden_size], vec![expand_size, hidden_size]),
-            dt_proj: Tensor::zeros(vec![expand_size]),
+            proj_in: TernaryTensor::new(
+                vec![0; hidden_size * expand_size],
+                vec![hidden_size, expand_size],
+            ),
+            proj_out: TernaryTensor::new(
+                vec![0; expand_size * hidden_size],
+                vec![expand_size, hidden_size],
+            ),
+
+            // Linear projection weights for creating B, C, and dt
+            x_proj: Tensor::zeros(vec![expand_size, dt_rank + state_size * 2]),
+            dt_proj: Tensor::zeros(vec![dt_rank, expand_size]),
+
             a_log: Tensor::zeros(vec![expand_size, state_size]),
             d: Tensor::zeros(vec![expand_size]),
+            dt_rank,
             h_state: Tensor::zeros(vec![1, expand_size, state_size]),
         }
     }
@@ -37,18 +55,37 @@ impl SsmBlock {
     /// Returns (1, hidden_size).
     pub fn forward_step(&mut self, x: &Tensor) -> Tensor {
         // 1. Up-project input using 1.58-bit ternary matmul
-        // x_proj = x @ proj_in -> (1, expand_size)
-        let x_proj = x.ternary_matmul(&self.proj_in);
+        // x_expand = x @ proj_in -> (1, expand_size)
+        let x_expand = x.ternary_matmul(&self.proj_in);
 
         let expand_size = self.h_state.shape[1];
         let state_size = self.h_state.shape[2];
 
-        // 2. We simulate the discretized B and C generation here.
-        // In Mamba-2, B, C, and Delta (dt) are functions of the input `x`.
-        // For scaffolding, we create dummy tensors.
-        let dt = Tensor::zeros(vec![expand_size]); // delta t
-        let b = Tensor::zeros(vec![state_size]);
-        let c = Tensor::zeros(vec![state_size]);
+        // 2. Data-dependent parameter projections
+        // In Mamba, B, C, and dt are functions of the expanded input.
+        // First we project x_expand to a combined vector of size (dt_rank + state_size * 2)
+        let ssm_params = x_expand.matmul(&self.x_proj);
+
+        // Slice the combined vector into dt, B, and C
+        let mut dt_in = Tensor::zeros(vec![1, self.dt_rank]);
+        let mut b = Tensor::zeros(vec![state_size]);
+        let mut c = Tensor::zeros(vec![state_size]);
+
+        for i in 0..self.dt_rank {
+            dt_in.data[i] = ssm_params.data[i];
+        }
+        for i in 0..state_size {
+            b.data[i] = ssm_params.data[self.dt_rank + i];
+            c.data[i] = ssm_params.data[self.dt_rank + state_size + i];
+        }
+
+        // Project dt_in up to expand_size to get the actual step sizes
+        let mut dt = dt_in.matmul(&self.dt_proj);
+        // Softplus is usually applied to dt here for stability
+        for i in 0..expand_size {
+            let val = dt.data[i];
+            dt.data[i] = (1.0 + val.exp()).ln();
+        }
 
         // 3. Discretization and State Update
         // A_bar = exp(dt * A)
@@ -58,7 +95,7 @@ impl SsmBlock {
 
         for e in 0..expand_size {
             let dt_val = dt.data[e];
-            let x_val = x_proj.data[e];
+            let x_val = x_expand.data[e];
 
             let mut y_val = 0.0;
 

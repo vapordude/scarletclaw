@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use wasmtime::*;
 
 /// Represents an execution environment capable of safely running dynamically
@@ -48,6 +48,9 @@ impl WasmSandbox {
         };
 
         // Simulated output
-        Ok(format!("Executed WASM module successfully with args: {}", args))
+        Ok(format!(
+            "Executed WASM module successfully with args: {}",
+            args
+        ))
     }
 }
