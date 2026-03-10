@@ -37,9 +37,11 @@ impl Channel for WebhookChannel {
     }
 
     async fn send(&self, target_id: &str, message: &str) -> Result<()> {
+        // Redact outbound bodies so we don't leak PII or prompts to CI/stdout
+        let target_hash = target_id.len(); // Simplified anonymization logic
         println!(
-            "[{}] Sending message to {}: {}",
-            self.name, target_id, message
+            "[{}] Sending message to target_hash({}) length: {}",
+            self.name, target_hash, message.len()
         );
         Ok(())
     }

@@ -1294,6 +1294,7 @@ dependencies = [
  "async-trait",
  "axum",
  "clap",
+ "rayon",
  "rusqlite",
  "serde",
  "serde_json",

@@ -60,10 +60,12 @@ async fn health_check() -> &'static str {
     "OK"
 }
 
+use axum::http::StatusCode;
+
 async fn chat_endpoint(
     State(state): State<Arc<GatewayState>>,
     Json(payload): Json<ChatRequest>,
-) -> Json<ChatResponse> {
+) -> Result<Json<ChatResponse>, (StatusCode, String)> {
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     // Send event asynchronously to the agent's background loop
@@ -72,17 +74,17 @@ async fn chat_endpoint(
         reply_tx: Some(tx),
     };
 
-    if let Err(e) = state.inbox.send(event).await {
-        return Json(ChatResponse {
-            reply: format!("Failed to queue message to agent: {}", e),
-        });
+    // Use a short timeout for enqueueing the event (the inbox might be full/blocked)
+    if let Err(e) = tokio::time::timeout(std::time::Duration::from_secs(5), state.inbox.send(event)).await {
+        return Err((StatusCode::SERVICE_UNAVAILABLE, format!("Timeout queueing message to agent: {}", e)));
     }
 
-    // Await the response from the agent loop
-    let reply = match rx.await {
-        Ok(res) => res,
-        Err(_) => "Agent failed to respond or dropped the request.".to_string(),
+    // Await the response from the agent loop with a strict timeout (e.g. 60s)
+    let reply = match tokio::time::timeout(std::time::Duration::from_secs(60), rx).await {
+        Ok(Ok(res)) => res,
+        Ok(Err(_)) => return Err((StatusCode::INTERNAL_SERVER_ERROR, "Agent channel dropped the request.".to_string())),
+        Err(_) => return Err((StatusCode::GATEWAY_TIMEOUT, "Agent timed out computing a response.".to_string())),
     };
 
-    Json(ChatResponse { reply })
+    Ok(Json(ChatResponse { reply }))
 }

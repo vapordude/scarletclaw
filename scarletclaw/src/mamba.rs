@@ -97,31 +97,40 @@ impl SsmBlock {
         // h_t = A_bar * h_{t-1} + B_bar * x_t
         let mut y_out = Tensor::zeros(vec![1, expand_size]);
 
-        for e in 0..expand_size {
-            let dt_val = dt.data[e];
-            let x_val = x_expand.data[e];
+        use rayon::prelude::*;
 
-            let mut y_val = 0.0;
+        // We parallelize over the `expand_size` dimension because each scalar channel
+        // in the SSM operates entirely independently of the others.
+        // We zip the output array, the input slices, and the state chunks to mutate safely.
+        y_out.data.par_iter_mut()
+            .zip(dt.data.par_iter())
+            .zip(x_expand.data.par_iter())
+            .zip(self.h_state.data.par_chunks_mut(state_size))
+            .zip(self.a_log.data.par_chunks(state_size))
+            .zip(self.d.data.par_iter())
+            .for_each(|(((((y_val_out, &dt_val), &x_val), h_chunk), a_chunk), &d_val)| {
 
-            for s in 0..state_size {
-                let a_val = -self.a_log.data[e * state_size + s].exp(); // Enforce negative A
-                let a_bar = (dt_val * a_val).exp();
-                let b_bar = dt_val * b.data[s]; // simplified integration
+                let mut y_val = 0.0;
 
-                let prev_h = self.h_state.data[e * state_size + s];
+                for s in 0..state_size {
+                    let a_val = -a_chunk[s].exp(); // Enforce negative A
+                    let a_bar = (dt_val * a_val).exp();
+                    let b_bar = dt_val * b.data[s];
 
-                // Update internal hidden state
-                let new_h = a_bar * prev_h + b_bar * x_val;
-                self.h_state.data[e * state_size + s] = new_h;
+                    let prev_h = h_chunk[s];
 
-                // Compute output slice
-                y_val += new_h * c.data[s];
-            }
+                    // Update internal hidden state
+                    let new_h = a_bar * prev_h + b_bar * x_val;
+                    h_chunk[s] = new_h;
 
-            // Add skip connection
-            y_val += x_val * self.d.data[e];
-            y_out.data[e] = y_val;
-        }
+                    // Compute output slice
+                    y_val += new_h * c.data[s];
+                }
+
+                // Add skip connection
+                y_val += x_val * d_val;
+                *y_val_out = y_val;
+            });
 
         // 4. Down-project back to hidden size using Ternary weights
         // y = y_out @ proj_out -> (1, hidden_size)

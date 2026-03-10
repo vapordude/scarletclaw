@@ -114,7 +114,7 @@ impl Agent {
         if let Ok(mems) = self.episodic_memory.recall_memories(message, 3).await {
             if !mems.is_empty() {
                 let context_str = mems.join("\n- ");
-                self.memory.push(Message::system(&format!("Relevant Past Memories:\n- {}", context_str)));
+                self.memory.push(Message::system(format!("Relevant Past Memories:\n- {}", context_str)));
             }
         }
 

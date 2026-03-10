@@ -24,6 +24,12 @@ impl AgentThought {
     /// Helper to parse the JSON string back into the struct.
     pub fn parse(json_str: &str) -> anyhow::Result<Self> {
         let thought: Self = serde_json::from_str(json_str)?;
+
+        // Enforce the ReAct invariant: it must either act OR respond, not both or neither.
+        if thought.action.is_some() == thought.response.is_some() {
+            anyhow::bail!("Malformed ReAct JSON: Agent must provide exactly one of 'action' or 'response'.");
+        }
+
         Ok(thought)
     }
 }

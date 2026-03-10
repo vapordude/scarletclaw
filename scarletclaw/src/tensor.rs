@@ -97,15 +97,28 @@ impl Tensor {
 
         let mut result = Tensor::zeros(vec![m, n]);
 
-        for i in 0..m {
-            for j in 0..n {
-                let mut sum = 0.0;
-                for l in 0..k {
-                    sum += self.data[i * k + l] * other.data[l * n + j];
+        use rayon::prelude::*;
+
+        // Block size for cache tiling (optimizes L1/L2 cache hits)
+        const BLOCK_SIZE: usize = 64;
+
+        // Parallelize across the rows of the resulting matrix
+        result.data.par_chunks_mut(n).enumerate().for_each(|(i, row)| {
+            for jj in (0..n).step_by(BLOCK_SIZE) {
+                for ll in (0..k).step_by(BLOCK_SIZE) {
+                    let j_end = (jj + BLOCK_SIZE).min(n);
+                    let l_end = (ll + BLOCK_SIZE).min(k);
+
+                    for j in jj..j_end {
+                        let mut sum = row[j];
+                        for l in ll..l_end {
+                            sum += self.data[i * k + l] * other.data[l * n + j];
+                        }
+                        row[j] = sum;
+                    }
                 }
-                result.data[i * n + j] = sum;
             }
-        }
+        });
 
         result
     }
