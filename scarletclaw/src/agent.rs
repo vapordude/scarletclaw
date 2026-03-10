@@ -72,7 +72,8 @@ impl Agent {
             while let Some(event) = rx.recv().await {
                 match event {
                     AgentEvent::UserMessage { content, reply_tx } => {
-                        println!("🤖 Agent received user message: {}", content);
+                        // Redacted/Truncated logging for safety
+                        println!("🤖 Agent received user message (length: {} chars).", content.len());
                         match self.process_turn(&content).await {
                             Ok(reply) => {
                                 if let Some(tx) = reply_tx {
@@ -109,6 +110,14 @@ impl Agent {
     /// Internal method to process a single conversational turn.
     /// Uses a basic ReAct loop (Reason -> Act -> Observe -> Repeat) up to a max step limit.
     async fn process_turn(&mut self, message: &str) -> Result<String> {
+        // Fetch relevant episodic context before responding
+        if let Ok(mems) = self.episodic_memory.recall_memories(message, 3).await {
+            if !mems.is_empty() {
+                let context_str = mems.join("\n- ");
+                self.memory.push(Message::system(&format!("Relevant Past Memories:\n- {}", context_str)));
+            }
+        }
+
         self.memory.push(Message::user(message));
 
         let max_steps = 5;
@@ -129,26 +138,35 @@ impl Agent {
                     if let Some(action) = thought.action {
                         println!("Agent Thought: {}", thought.thought);
                         println!(
-                            "Agent executing Tool: {} with args '{}'",
-                            action.tool_name, action.args
+                            "Agent executing Tool: {} (args len: {})",
+                            action.tool_name, action.args.len()
                         );
 
                         let tool_observation = if let Some(tool) = self.tools.get(&action.tool_name)
                         {
-                            match tool.execute(&self.sandbox, &action.args).await {
-                                Ok(res) => {
+                            // Enforce a hard timeout on dynamic tool execution to prevent the agent's main loop from wedging.
+                            match tokio::time::timeout(
+                                std::time::Duration::from_secs(30),
+                                tool.execute(&self.sandbox, &action.args)
+                            ).await {
+                                Ok(Ok(res)) => {
                                     format!("Observation: Execution successful. Output: {}", res)
                                 }
-                                Err(e) => format!("Observation: Execution failed. Error: {}", e),
+                                Ok(Err(e)) => format!("Observation: Execution failed. Error: {}", e),
+                                Err(_) => "Observation: Execution timed out after 30 seconds.".to_string(),
                             }
                         } else {
                             format!("Observation: Tool '{}' does not exist.", action.tool_name)
                         };
 
-                        // Push the observation back into memory and loop again
-                        self.memory.push(Message::system(&tool_observation));
+                        // Push the observation back into memory using Role::Tool to avoid injection
+                        self.memory.push(Message {
+                            role: crate::models::Role::Tool,
+                            content: tool_observation,
+                        });
                     } else if let Some(final_response) = thought.response {
-                        // Task complete! Return the final response to the user.
+                        // Task complete! Return the final response to the user and commit to episodic memory.
+                        let _ = self.episodic_memory.store_memory(&format!("User asked: {}. I responded: {}", message, final_response)).await;
                         return Ok(final_response);
                     } else {
                         // The agent just thought but didn't act or reply. Ask it to continue.

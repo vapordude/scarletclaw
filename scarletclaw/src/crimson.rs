@@ -42,9 +42,13 @@ impl CrimsonEngineAdapter {
 
 #[async_trait]
 impl InferenceEngine for CrimsonEngineAdapter {
-    async fn generate(&self, _messages: &[Message]) -> Result<String> {
-        // 1. Tokenize messages (Placeholder)
-        let tokens = vec![1, 2, 3]; // Example token IDs
+    async fn generate(&self, messages: &[Message]) -> Result<String> {
+        // 1. Tokenize messages (Placeholder: in reality we'd use a BPE tokenizer)
+        let mut tokens = vec![];
+        for msg in messages {
+            // Very naive dummy tokenization to actually use the prompt length
+            tokens.push(msg.content.len() % self.embedding.vocab_size());
+        }
 
         let mut ssm = self.ssm.lock().await;
         // Ensure state is clean before processing a new sequence

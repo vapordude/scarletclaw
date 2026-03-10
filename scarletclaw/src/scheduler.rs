@@ -12,7 +12,12 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    pub fn new(inbox: Sender<AgentEvent>, interval_seconds: u64) -> Self {
+    pub fn new(inbox: Sender<AgentEvent>, mut interval_seconds: u64) -> Self {
+        if interval_seconds == 0 {
+            println!("⚠️ Scheduler interval_seconds was 0, clamping to 1 second to avoid panics.");
+            interval_seconds = 1;
+        }
+
         Self {
             inbox,
             interval_seconds,

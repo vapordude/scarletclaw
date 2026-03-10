@@ -46,7 +46,8 @@ impl Gateway {
             .route("/chat", post(chat_endpoint))
             .with_state(state);
 
-        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", self.port)).await?;
+        // By default, only bind to loopback for security.
+        let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", self.port)).await?;
         println!("🚀 Gateway listening on {}", listener.local_addr()?);
 
         axum::serve(listener, app).await?;

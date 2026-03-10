@@ -84,7 +84,11 @@ impl SsmBlock {
         // Softplus is usually applied to dt here for stability
         for i in 0..expand_size {
             let val = dt.data[i];
-            dt.data[i] = (1.0 + val.exp()).ln();
+            dt.data[i] = if val > 0.0 {
+                val + (-val).exp().ln_1p()
+            } else {
+                val.exp().ln_1p()
+            };
         }
 
         // 3. Discretization and State Update

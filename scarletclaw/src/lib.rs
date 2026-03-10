@@ -1,19 +1,27 @@
-pub mod agent;
+mod agent;
 pub mod channels;
-pub mod crimson;
-pub mod engine;
-pub mod gateway;
-pub mod mamba;
-pub mod memory;
+mod crimson;
+mod engine;
+mod gateway;
+mod mamba;
+mod memory;
 pub mod models;
-pub mod react;
-pub mod sandbox;
-pub mod scheduler;
-pub mod sqlite_memory;
-pub mod tensor;
-pub mod tools;
-pub mod transformer;
-pub mod wasm;
+mod react;
+mod sandbox;
+mod scheduler;
+mod sqlite_memory;
+mod tensor;
+mod tools;
+mod transformer;
+mod wasm;
+
+pub use agent::{Agent, AgentEvent};
+pub use gateway::Gateway;
+pub use sandbox::{Sandbox, SandboxConfig};
+pub use engine::{InferenceEngine, DummyEngine};
+pub use crimson::CrimsonEngineAdapter;
+pub use scheduler::Scheduler;
+pub use sqlite_memory::SqliteEpisodicMemory;
 
 #[cfg(test)]
 mod tests;

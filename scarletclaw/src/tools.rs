@@ -34,6 +34,9 @@ impl Tool for ReadFileTool {
 
     async fn execute(&self, sandbox: &Sandbox, args: &str) -> Result<String> {
         let path = args.trim();
+        if path.contains("..") || path.starts_with('/') {
+            bail!("Invalid path: absolute paths and traversal sequences are not allowed");
+        }
         sandbox.read_file(path)
     }
 }
@@ -56,6 +59,11 @@ impl Tool for WriteAndCompileWasmTool {
     async fn execute(&self, sandbox: &Sandbox, args: &str) -> Result<String> {
         let agent_code = args;
 
+        // Block simple attempts to exfiltrate host data via rustc macros
+        if agent_code.contains("include_str!") || agent_code.contains("include_bytes!") || agent_code.contains("env!") {
+            bail!("Security violation: compile-time environment/file macros are disabled for dynamic tools.");
+        }
+
         // Ensure the host has rustc installed for this dynamic capability
         if Command::new("rustc").arg("--version").output().is_err() {
             bail!("rustc is not available on the host to compile dynamic tools.");
@@ -73,11 +81,12 @@ impl Tool for WriteAndCompileWasmTool {
             agent_code
         );
 
-        // 1. Write the agent's code to a temporary file
+        // 1. Write the agent's code to a unique temporary file
         let temp_dir = std::env::temp_dir().join("scarletclaw_wasm");
         fs::create_dir_all(&temp_dir)?;
-        let src_path = temp_dir.join("dynamic_tool.rs");
-        let out_path = temp_dir.join("dynamic_tool.wasm");
+        let run_id = uuid::Uuid::new_v4();
+        let src_path = temp_dir.join(format!("dynamic_tool_{}.rs", run_id));
+        let out_path = temp_dir.join(format!("dynamic_tool_{}.wasm", run_id));
 
         fs::write(&src_path, full_source)?;
 

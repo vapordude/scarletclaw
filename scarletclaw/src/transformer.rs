@@ -4,6 +4,7 @@ use crate::tensor::Tensor;
 pub struct Embedding {
     weight: Tensor, // (vocab_size, hidden_size)
     hidden_size: usize,
+    vocab_size: usize,
 }
 
 impl Embedding {
@@ -12,11 +13,21 @@ impl Embedding {
             // Dummy initialization for scaffolding
             weight: Tensor::zeros(vec![vocab_size, hidden_size]),
             hidden_size,
+            vocab_size,
         }
     }
 
+    pub fn vocab_size(&self) -> usize {
+        self.vocab_size
+    }
+
     /// Forward pass: looks up the embedding vector for a given token ID.
-    pub fn forward(&self, token_id: usize) -> Tensor {
+    pub fn forward(&self, mut token_id: usize) -> Tensor {
+        if token_id >= self.vocab_size {
+            // Map out-of-vocabulary to token 0 (typically UNK)
+            token_id = 0;
+        }
+
         let mut out = Tensor::zeros(vec![1, self.hidden_size]);
         // Simple row extraction
         let offset = token_id * self.hidden_size;
@@ -126,6 +137,10 @@ impl FeedForward {
 /// Rotary Positional Embeddings (RoPE) mathematical structure.
 /// Injects positional information by rotating the queries and keys in the complex plane.
 pub fn apply_rope(q: &mut Tensor, k: &mut Tensor, pos: usize, head_dim: usize) {
+    debug_assert!(head_dim > 0 && head_dim % 2 == 0, "head_dim must be positive and even");
+    debug_assert!(q.shape[0] % head_dim == 0, "q dimension must be divisible by head_dim");
+    debug_assert!(k.shape[0] % head_dim == 0, "k dimension must be divisible by head_dim");
+
     // In a real implementation, theta frequencies are precomputed.
     // We apply rotations to pairs of dimensions.
     let theta_base = 10000.0f32;

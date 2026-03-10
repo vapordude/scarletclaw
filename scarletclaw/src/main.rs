@@ -3,13 +3,8 @@ use clap::{Parser, Subcommand};
 use std::sync::Arc;
 
 use scarletclaw::{
-    agent::Agent,
-    crimson::CrimsonEngineAdapter,
-    engine::DummyEngine,
-    gateway::Gateway,
-    sandbox::{Sandbox, SandboxConfig},
-    scheduler::Scheduler,
-    sqlite_memory::SqliteEpisodicMemory,
+    Agent, AgentEvent, CrimsonEngineAdapter, DummyEngine, Gateway, Sandbox, SandboxConfig,
+    Scheduler, SqliteEpisodicMemory, InferenceEngine,
 };
 
 /// ScarletClaw - The native Rust local AI assistant
@@ -31,6 +26,10 @@ enum Commands {
         /// Whether to enable unsafe shell command execution (use with extreme caution!)
         #[arg(long, default_value_t = false)]
         unsafe_shell: bool,
+
+        /// Developer explicit opt-in confirmation required for unsafe operations
+        #[arg(long, default_value_t = false)]
+        dev_confirm_unsafe: bool,
 
         /// Automatically trigger background reasoning loops every N seconds
         #[arg(long)]
@@ -67,6 +66,7 @@ async fn main() -> Result<()> {
         Commands::Chat {
             system,
             unsafe_shell,
+            dev_confirm_unsafe,
             cron_interval,
             use_crimson_engine,
         } => {
@@ -74,13 +74,17 @@ async fn main() -> Result<()> {
             let mut config = SandboxConfig::default();
 
             if *unsafe_shell {
-                println!("⚠️ WARNING: Unsafe shell execution is ENABLED.");
-                config.allow_shell_execution = true;
+                if *dev_confirm_unsafe {
+                    println!("⚠️ WARNING: Unsafe shell execution is ENABLED.");
+                    config.allow_shell_execution = true;
+                } else {
+                    println!("🛡️ '--unsafe-shell' passed without '--dev-confirm-unsafe'. Shell execution remains DISABLED.");
+                }
             }
 
             let sandbox = Sandbox::new(config);
 
-            let engine: Arc<dyn scarletclaw::engine::InferenceEngine> = if *use_crimson_engine {
+            let engine: Arc<dyn InferenceEngine> = if *use_crimson_engine {
                 println!("🧠 Initializing hybrid BitMamba-2 mathematical engine...");
                 // Dummy dimension values matching typical 0.25b models roughly
                 // vocab_size: 32000, hidden: 512, intermediate: 1024, expand: 1024, state: 64
@@ -116,7 +120,7 @@ async fn main() -> Result<()> {
                 let input = input.trim();
 
                 if input.eq_ignore_ascii_case("exit") {
-                    let _ = tx.send(scarletclaw::agent::AgentEvent::Shutdown).await;
+                    let _ = tx.send(AgentEvent::Shutdown).await;
                     println!("Goodbye!");
                     break;
                 }
@@ -126,7 +130,7 @@ async fn main() -> Result<()> {
                 }
 
                 let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-                let event = scarletclaw::agent::AgentEvent::UserMessage {
+                let event = AgentEvent::UserMessage {
                     content: input.to_string(),
                     reply_tx: Some(reply_tx),
                 };
@@ -157,9 +161,21 @@ async fn main() -> Result<()> {
                 agent.add_system_prompt(sys);
             }
 
-            let (tx, _handle) = agent.spawn();
-            let gateway = Gateway::new(*port, tx);
-            gateway.run().await?;
+            let (tx, agent_handle) = agent.spawn();
+            let gateway = Gateway::new(*port, tx.clone());
+
+            // Run the gateway server. If it errors out or exits, we shut down the agent.
+            if let Err(e) = gateway.run().await {
+                println!("Gateway exited with error: {}", e);
+            }
+
+            println!("Shutting down agent loop...");
+            let _ = tx.send(AgentEvent::Shutdown).await;
+
+            // Wait for agent to exit properly.
+            if let Err(e) = agent_handle.await {
+                println!("Agent task panicked: {}", e);
+            }
         }
         Commands::TestSandbox { command } => {
             let config = SandboxConfig::default();
