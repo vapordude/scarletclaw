@@ -20,6 +20,7 @@ pub trait Tool: Send + Sync {
 }
 
 /// A safe tool for reading files, governed by Sandbox constraints.
+#[allow(dead_code)]
 pub struct ReadFileTool;
 
 #[async_trait]
@@ -44,6 +45,7 @@ impl Tool for ReadFileTool {
 /// A tool allowing the agent to write raw Rust code, compile it to WASM,
 /// and execute it. In a Level 6 agent, this permits unbounded dynamic capability
 /// creation while keeping the execution itself safely bounded within the WasmSandbox.
+#[allow(dead_code)]
 pub struct WriteAndCompileWasmTool;
 
 #[async_trait]
