@@ -5,8 +5,11 @@ use anyhow::Result;
 use scarletclaw::{
     agent::Agent,
     engine::DummyEngine,
+    crimson::CrimsonEngineAdapter,
     sandbox::{Sandbox, SandboxConfig},
     gateway::Gateway,
+    scheduler::Scheduler,
+    sqlite_memory::SqliteEpisodicMemory,
 };
 
 /// ScarletClaw - The native Rust local AI assistant
@@ -28,6 +31,14 @@ enum Commands {
         /// Whether to enable unsafe shell command execution (use with extreme caution!)
         #[arg(long, default_value_t = false)]
         unsafe_shell: bool,
+
+        /// Automatically trigger background reasoning loops every N seconds
+        #[arg(long)]
+        cron_interval: Option<u64>,
+
+        /// Use the experimental BitMamba-2 mathematical engine instead of Dummy Engine
+        #[arg(long, default_value_t = false)]
+        use_crimson_engine: bool,
     },
 
     /// Start the Gateway server to accept remote connections
@@ -53,7 +64,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::Chat { system, unsafe_shell } => {
+        Commands::Chat { system, unsafe_shell, cron_interval, use_crimson_engine } => {
             println!("🦀 Welcome to ScarletClaw!");
             let mut config = SandboxConfig::default();
 
@@ -63,14 +74,30 @@ async fn main() -> Result<()> {
             }
 
             let sandbox = Sandbox::new(config);
-            let engine = Arc::new(DummyEngine);
-            let mut agent = Agent::new(engine, sandbox);
+
+            let engine: Arc<dyn scarletclaw::engine::InferenceEngine> = if *use_crimson_engine {
+                println!("🧠 Initializing hybrid BitMamba-2 mathematical engine...");
+                // Dummy dimension values matching typical 0.25b models roughly
+                Arc::new(CrimsonEngineAdapter::new(512, 1024, 1024, 64))
+            } else {
+                Arc::new(DummyEngine)
+            };
+
+            let memory_db = SqliteEpisodicMemory::new("scarletclaw_memory.db").expect("Failed to init DB");
+
+            let mut agent = Agent::new(engine, sandbox)
+                .with_episodic_memory(Arc::new(memory_db));
 
             if let Some(sys) = system {
                 agent.add_system_prompt(sys);
             }
 
             let (tx, _handle) = agent.spawn();
+
+            if let Some(secs) = cron_interval {
+                let scheduler = Scheduler::new(tx.clone(), *secs);
+                scheduler.spawn();
+            }
 
             println!("Type your message below (type 'exit' to quit):");
             loop {
@@ -114,7 +141,11 @@ async fn main() -> Result<()> {
             let config = SandboxConfig::default();
             let sandbox = Sandbox::new(config);
             let engine = Arc::new(DummyEngine);
-            let mut agent = Agent::new(engine, sandbox);
+
+            let memory_db = SqliteEpisodicMemory::new("scarletclaw_memory.db").expect("Failed to init DB");
+
+            let mut agent = Agent::new(engine, sandbox)
+                .with_episodic_memory(Arc::new(memory_db));
 
             if let Some(sys) = system {
                 agent.add_system_prompt(sys);
