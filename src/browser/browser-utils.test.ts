@@ -159,28 +159,45 @@ describe("cdp.helpers", () => {
     expect(url).toBe("https://example.com/chrome/json/list?token=abc");
   });
 
-  it("normalizes direct WebSocket CDP URLs to an HTTP base for /json endpoints", () => {
-    const url = normalizeCdpHttpBaseForJsonEndpoints(
-      "wss://connect.example.com/devtools/browser/ABC?token=abc",
-    );
-    expect(url).toBe("https://connect.example.com/?token=abc");
-  });
+  describe("normalizeCdpHttpBaseForJsonEndpoints", () => {
+    it("replaces ws: with http: and wss: with https:", () => {
+      expect(normalizeCdpHttpBaseForJsonEndpoints("ws://127.0.0.1:9222")).toBe("http://127.0.0.1:9222");
+      expect(normalizeCdpHttpBaseForJsonEndpoints("wss://127.0.0.1:9222")).toBe("https://127.0.0.1:9222");
+    });
 
-  it("preserves auth and query params when normalizing secure loopback WebSocket CDP URLs", () => {
-    const url = normalizeCdpHttpBaseForJsonEndpoints(
-      "wss://user:pass@127.0.0.1:9222/devtools/browser/ABC?token=abc",
-    );
-    expect(url).toBe("https://user:pass@127.0.0.1:9222/?token=abc");
-  });
+    it("preserves existing http: and https: protocols", () => {
+      expect(normalizeCdpHttpBaseForJsonEndpoints("http://127.0.0.1:9222")).toBe("http://127.0.0.1:9222");
+      expect(normalizeCdpHttpBaseForJsonEndpoints("https://127.0.0.1:9222")).toBe("https://127.0.0.1:9222");
+    });
 
-  it("strips a trailing /cdp suffix when normalizing HTTP bases", () => {
-    const url = normalizeCdpHttpBaseForJsonEndpoints("ws://127.0.0.1:9222/cdp?token=abc");
-    expect(url).toBe("http://127.0.0.1:9222/?token=abc");
-  });
+    it("strips /devtools/browser/.* suffix", () => {
+      expect(normalizeCdpHttpBaseForJsonEndpoints("wss://example.com/devtools/browser/ABC-123")).toBe("https://example.com");
+      expect(normalizeCdpHttpBaseForJsonEndpoints("ws://127.0.0.1/devtools/browser/some-id")).toBe("http://127.0.0.1");
+    });
 
-  it("preserves base prefixes when stripping a trailing /cdp suffix", () => {
-    const url = normalizeCdpHttpBaseForJsonEndpoints("ws://127.0.0.1:9222/browser/cdp?token=abc");
-    expect(url).toBe("http://127.0.0.1:9222/browser?token=abc");
+    it("strips /cdp suffix", () => {
+      expect(normalizeCdpHttpBaseForJsonEndpoints("ws://127.0.0.1:9222/cdp")).toBe("http://127.0.0.1:9222");
+      expect(normalizeCdpHttpBaseForJsonEndpoints("ws://127.0.0.1:9222/browser/cdp")).toBe("http://127.0.0.1:9222/browser");
+    });
+
+    it("strips trailing slashes", () => {
+      expect(normalizeCdpHttpBaseForJsonEndpoints("http://127.0.0.1:9222/")).toBe("http://127.0.0.1:9222");
+      expect(normalizeCdpHttpBaseForJsonEndpoints("ws://127.0.0.1:9222/browser/")).toBe("http://127.0.0.1:9222/browser");
+    });
+
+    it("preserves query params and auth", () => {
+      expect(normalizeCdpHttpBaseForJsonEndpoints("wss://connect.example.com/devtools/browser/ABC?token=abc")).toBe("https://connect.example.com/?token=abc");
+      expect(normalizeCdpHttpBaseForJsonEndpoints("wss://user:pass@127.0.0.1:9222/devtools/browser/ABC?token=abc")).toBe("https://user:pass@127.0.0.1:9222/?token=abc");
+      expect(normalizeCdpHttpBaseForJsonEndpoints("ws://127.0.0.1:9222/cdp?token=abc")).toBe("http://127.0.0.1:9222/?token=abc");
+      expect(normalizeCdpHttpBaseForJsonEndpoints("ws://127.0.0.1:9222/browser/cdp?token=abc")).toBe("http://127.0.0.1:9222/browser?token=abc");
+    });
+
+    it("falls back to string replacement for invalid URLs", () => {
+      // Use something that fails `new URL(cdpUrl)` but works via string fallback
+      expect(normalizeCdpHttpBaseForJsonEndpoints("ws://[invalid-host]/devtools/browser/123")).toBe("http://[invalid-host]");
+      expect(normalizeCdpHttpBaseForJsonEndpoints("wss://[invalid-host]/cdp")).toBe("https://[invalid-host]");
+      expect(normalizeCdpHttpBaseForJsonEndpoints("not-a-url")).toBe("not-a-url");
+    });
   });
 
   it("adds basic auth headers when credentials are present", () => {
