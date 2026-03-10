@@ -136,6 +136,7 @@ impl FeedForward {
 
 /// Rotary Positional Embeddings (RoPE) mathematical structure.
 /// Injects positional information by rotating the queries and keys in the complex plane.
+#[allow(dead_code)]
 pub fn apply_rope(q: &mut Tensor, k: &mut Tensor, pos: usize, head_dim: usize) {
     debug_assert!(head_dim > 0 && head_dim % 2 == 0, "head_dim must be positive and even");
     debug_assert!(q.shape[0] % head_dim == 0, "q dimension must be divisible by head_dim");

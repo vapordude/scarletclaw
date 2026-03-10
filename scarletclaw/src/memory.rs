@@ -85,6 +85,7 @@ impl Memory {
         &self.messages
     }
 
+    #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.messages.clear();
     }

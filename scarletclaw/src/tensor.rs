@@ -59,6 +59,7 @@ impl Tensor {
     }
 
     /// Element-wise multiplication. Mutates `self` in place.
+    #[allow(dead_code)]
     pub fn mul_assign(&mut self, other: &Tensor) {
         assert_eq!(
             self.shape, other.shape,
@@ -70,6 +71,7 @@ impl Tensor {
     }
 
     /// Computes the dot product of two 1D vectors.
+    #[allow(dead_code)]
     pub fn dot(a: &Tensor, b: &Tensor) -> f32 {
         assert_eq!(a.shape.len(), 1, "Dot product requires 1D tensors");
         assert_eq!(a.shape, b.shape, "Shapes must match for dot product");
@@ -109,12 +111,12 @@ impl Tensor {
                     let j_end = (jj + BLOCK_SIZE).min(n);
                     let l_end = (ll + BLOCK_SIZE).min(k);
 
-                    for j in jj..j_end {
-                        let mut sum = row[j];
+                    for (j, item) in row.iter_mut().enumerate().take(j_end).skip(jj) {
+                        let mut sum = *item;
                         for l in ll..l_end {
                             sum += self.data[i * k + l] * other.data[l * n + j];
                         }
-                        row[j] = sum;
+                        *item = sum;
                     }
                 }
             }
@@ -166,6 +168,7 @@ impl Tensor {
     }
 
     /// Applies the Softmax activation function over a 1D tensor.
+    #[allow(dead_code)]
     pub fn softmax(&mut self) {
         assert_eq!(
             self.shape.len(),
