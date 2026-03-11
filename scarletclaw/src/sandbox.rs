@@ -34,11 +34,11 @@ pub struct Sandbox {
 }
 
 impl Sandbox {
-    pub fn new(config: SandboxConfig) -> Self {
-        Self {
+    pub fn new(config: SandboxConfig) -> Result<Self> {
+        Ok(Self {
             config,
-            wasm_sandbox: WasmSandbox::new(),
-        }
+            wasm_sandbox: WasmSandbox::new()?,
+        })
     }
 
     /// Provides access to the underlying strict WASM execution environment.

@@ -31,13 +31,13 @@ impl DummyEpisodicMemory {
 #[async_trait]
 impl EpisodicMemory for DummyEpisodicMemory {
     async fn store_memory(&self, content: &str) -> anyhow::Result<()> {
-        let mut mems = self.memories.lock().unwrap();
+        let mut mems = self.memories.lock().map_err(|e| anyhow::anyhow!("Mutex poisoned: {}", e))?;
         mems.push(content.to_string());
         Ok(())
     }
 
     async fn recall_memories(&self, query: &str, limit: usize) -> anyhow::Result<Vec<String>> {
-        let mems = self.memories.lock().unwrap();
+        let mems = self.memories.lock().map_err(|e| anyhow::anyhow!("Mutex poisoned: {}", e))?;
         // Extremely naive "search" for demonstration purposes.
         let results = mems
             .iter()

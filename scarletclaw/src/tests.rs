@@ -8,9 +8,9 @@ mod tests {
     use std::sync::Arc;
 
     #[tokio::test]
-    async fn test_agent_chat() {
+    async fn test_agent_chat() -> anyhow::Result<()> {
         let sandbox_config = SandboxConfig::default();
-        let sandbox = Sandbox::new(sandbox_config);
+        let sandbox = Sandbox::new(sandbox_config)?;
         let engine = Arc::new(DummyEngine);
 
         let mut agent = Agent::new(engine, sandbox);
@@ -29,30 +29,31 @@ mod tests {
             })
             .await;
 
-        let response = reply_rx.await.unwrap();
+        let response = reply_rx.await?;
 
         // Assert response matches our Dummy Engine behavior
         assert_eq!(response, "(Dummy Engine Reply to: 'Hello!')");
+        Ok(())
     }
 
     #[test]
-    fn test_sandbox_default_blocks_execution() {
-        let sandbox = Sandbox::new(SandboxConfig::default());
+    fn test_sandbox_default_blocks_execution() -> anyhow::Result<()> {
+        let sandbox = Sandbox::new(SandboxConfig::default())?;
         let result = sandbox.execute_command("ls -la");
 
-        assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Security violation: shell execution is disabled"));
+        Ok(())
     }
 
     #[test]
-    fn test_sandbox_allows_execution_if_configured() {
+    fn test_sandbox_allows_execution_if_configured() -> anyhow::Result<()> {
         let mut config = SandboxConfig::default();
         config.allow_shell_execution = true;
-        let sandbox = Sandbox::new(config);
+        let sandbox = Sandbox::new(config)?;
 
         let result = sandbox.execute_command("ls -la");
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "Executed: ls -la");
+        assert_eq!(result?, "Executed: ls -la");
+        Ok(())
     }
 }
