@@ -8,22 +8,16 @@ pub struct WasmSandbox {
     engine: Engine,
 }
 
-impl Default for WasmSandbox {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl WasmSandbox {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self> {
         let mut config = Config::new();
         config.wasm_backtrace_details(wasmtime::WasmBacktraceDetails::Enable);
 
         // Critical safeguard: Enable execution bounds to prevent infinite loops.
         config.consume_fuel(true);
 
-        let engine = Engine::new(&config).expect("Failed to initialize WASM engine");
-        Self { engine }
+        let engine = Engine::new(&config)?;
+        Ok(Self { engine })
     }
 
     /// Compiles and executes a raw WASM module's `run` function safely.

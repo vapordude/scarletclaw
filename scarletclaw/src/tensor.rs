@@ -109,12 +109,12 @@ impl Tensor {
                     let j_end = (jj + BLOCK_SIZE).min(n);
                     let l_end = (ll + BLOCK_SIZE).min(k);
 
-                    for j in jj..j_end {
-                        let mut sum = row[j];
+                    for (j, item) in row.iter_mut().enumerate().take(j_end).skip(jj) {
+                        let mut sum = *item;
                         for l in ll..l_end {
                             sum += self.data[i * k + l] * other.data[l * n + j];
                         }
-                        row[j] = sum;
+                        *item = sum;
                     }
                 }
             }

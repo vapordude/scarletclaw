@@ -82,7 +82,7 @@ async fn main() -> Result<()> {
                 }
             }
 
-            let sandbox = Sandbox::new(config);
+            let sandbox = Sandbox::new(config)?;
 
             let engine: Arc<dyn InferenceEngine> = if *use_crimson_engine {
                 println!("🧠 Initializing hybrid BitMamba-2 mathematical engine...");
@@ -94,7 +94,7 @@ async fn main() -> Result<()> {
             };
 
             let memory_db =
-                SqliteEpisodicMemory::new("scarletclaw_memory.db").expect("Failed to init DB");
+                SqliteEpisodicMemory::new("scarletclaw_memory.db")?;
 
             let mut agent = Agent::new(engine, sandbox).with_episodic_memory(Arc::new(memory_db));
 
@@ -149,11 +149,11 @@ async fn main() -> Result<()> {
         }
         Commands::Gateway { port, system } => {
             let config = SandboxConfig::default();
-            let sandbox = Sandbox::new(config);
+            let sandbox = Sandbox::new(config)?;
             let engine = Arc::new(DummyEngine);
 
             let memory_db =
-                SqliteEpisodicMemory::new("scarletclaw_memory.db").expect("Failed to init DB");
+                SqliteEpisodicMemory::new("scarletclaw_memory.db")?;
 
             let mut agent = Agent::new(engine, sandbox).with_episodic_memory(Arc::new(memory_db));
 
@@ -179,7 +179,7 @@ async fn main() -> Result<()> {
         }
         Commands::TestSandbox { command } => {
             let config = SandboxConfig::default();
-            let sandbox = Sandbox::new(config);
+            let sandbox = Sandbox::new(config)?;
 
             println!(
                 "Attempting to execute '{}' in a default sandbox...",
